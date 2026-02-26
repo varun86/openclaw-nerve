@@ -20,6 +20,7 @@ import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { execFile } from 'node:child_process';
 import { dirname } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { config, WS_ALLOWED_HOSTS, SESSION_COOKIE_NAME } from './config.js';
 import { verifySession, parseSessionCookie } from './session.js';
 import { createDeviceBlock, getDeviceIdentity } from './device-identity.js';
@@ -102,10 +103,12 @@ export function setupWebSocketProxy(server: HttpServer | HttpsServer): void {
   });
 
   wss.on('connection', (clientWs: WebSocket, req: IncomingMessage) => {
+    const connId = randomUUID().slice(0, 8);
+    const tag = `[ws-proxy:${connId}]`;
     const url = new URL(req.url || '/', 'https://localhost');
     const target = url.searchParams.get('target');
 
-    console.log(`[ws-proxy] New connection: target=${target}`);
+    console.log(`${tag} New connection: target=${target}`);
 
     if (!target) {
       clientWs.close(1008, 'Missing ?target= param');
@@ -121,14 +124,14 @@ export function setupWebSocketProxy(server: HttpServer | HttpsServer): void {
     }
 
     if (!['ws:', 'wss:'].includes(targetUrl.protocol) || !WS_ALLOWED_HOSTS.has(targetUrl.hostname)) {
-      console.warn(`[ws-proxy] Rejected: target not allowed: ${target}`);
+      console.warn(`${tag} Rejected: target not allowed: ${target}`);
       clientWs.close(1008, 'Target not allowed');
       return;
     }
 
     const targetPort = Number(targetUrl.port) || (targetUrl.protocol === 'wss:' ? 443 : 80);
     if (targetPort < 1 || targetPort > 65535) {
-      console.warn(`[ws-proxy] Rejected: invalid port ${targetPort}`);
+      console.warn(`${tag} Rejected: invalid port ${targetPort}`);
       clientWs.close(1008, 'Invalid target port');
       return;
     }
@@ -138,7 +141,7 @@ export function setupWebSocketProxy(server: HttpServer | HttpsServer): void {
     const scheme = isEncrypted ? 'https' : 'http';
     const clientOrigin = req.headers.origin || `${scheme}://${req.headers.host}`;
 
-    createGatewayRelay(clientWs, targetUrl, clientOrigin);
+    createGatewayRelay(clientWs, targetUrl, clientOrigin, connId);
   });
 }
 
@@ -153,7 +156,13 @@ function createGatewayRelay(
   clientWs: WebSocket,
   targetUrl: URL,
   clientOrigin: string,
+  connId: string,
 ): void {
+  const tag = `[ws-proxy:${connId}]`;
+  const connStartTime = Date.now();
+  let clientToGatewayCount = 0;
+  let gatewayToClientCount = 0;
+
   let gwWs: WebSocket;
   let challengeNonce: string | null = null;
   let handshakeComplete = false;
@@ -189,6 +198,7 @@ function createGatewayRelay(
       }
 
       if (clientWs.readyState === WebSocket.OPEN) {
+        gatewayToClientCount++;
         clientWs.send(isBinary ? data : data.toString());
       }
     });
@@ -201,7 +211,7 @@ function createGatewayRelay(
             const parsed = JSON.parse(msg.data.toString());
             if (parsed.type === 'req' && parsed.method === 'connect' && parsed.params) {
               savedConnectMsg = parsed;
-              const modified = useDeviceIdentity ? injectDeviceIdentity(parsed, challengeNonce) : parsed;
+              const modified = useDeviceIdentity ? injectDeviceIdentity(parsed, challengeNonce, tag) : parsed;
               gwWs.send(JSON.stringify(modified));
               handshakeComplete = true;
               continue;
@@ -221,13 +231,13 @@ function createGatewayRelay(
     });
 
     gwWs.on('error', (err) => {
-      console.error('[ws-proxy] Gateway error:', err.message);
+      console.error(`${tag} Gateway error:`, err.message);
       if (!hasRetried || handshakeComplete) clientWs.close();
     });
 
     gwWs.on('close', (code, reason) => {
       const reasonStr = reason?.toString() || '';
-      console.log(`[ws-proxy] Gateway closed: code=${code}, reason=${reasonStr}`);
+      console.log(`${tag} Gateway closed: code=${code}, reason=${reasonStr}`);
 
       // Device auth rejected — retry without device identity
       const isDeviceRejection = code === 1008 && (
@@ -238,7 +248,7 @@ function createGatewayRelay(
       );
 
       if (useDeviceIdentity && !hasRetried && isDeviceRejection && clientWs.readyState === WebSocket.OPEN) {
-        console.log(`[ws-proxy] Device rejected (${reasonStr}) — retrying without device identity`);
+        console.log(`${tag} Device rejected (${reasonStr}) — retrying without device identity`);
         useDeviceIdentity = false;
         hasRetried = true;
         openGateway();
@@ -270,7 +280,7 @@ function createGatewayRelay(
         // Intercept connect request to inject device identity
         if (!handshakeComplete && challengeNonce && msg.type === 'req' && msg.method === 'connect' && msg.params) {
           savedConnectMsg = msg;
-          const modified = useDeviceIdentity ? injectDeviceIdentity(msg, challengeNonce) : msg;
+          const modified = useDeviceIdentity ? injectDeviceIdentity(msg, challengeNonce, tag) : msg;
           gwWs.send(JSON.stringify(modified));
           handshakeComplete = true;
           return;
@@ -300,15 +310,18 @@ function createGatewayRelay(
       } catch { /* pass through */ }
     }
 
+    clientToGatewayCount++;
     gwWs.send(isBinary ? data : data.toString());
   });
 
   clientWs.on('close', (code, reason) => {
-    console.log(`[ws-proxy] Client closed: code=${code}, reason=${reason?.toString()}`);
+    const duration = Date.now() - connStartTime;
+    console.log(`${tag} Client closed: code=${code}, reason=${reason?.toString()}`);
+    console.log(`${tag} Summary: duration=${duration}ms, client->gw=${clientToGatewayCount}, gw->client=${gatewayToClientCount}`);
     if (gwWs) gwWs.close();
   });
   clientWs.on('error', (err) => {
-    console.error('[ws-proxy] Client error:', err.message);
+    console.error(`${tag} Client error:`, err.message);
     if (gwWs) gwWs.close();
   });
 
@@ -325,7 +338,7 @@ interface ConnectParams {
   auth?: { token?: string };
 }
 
-function injectDeviceIdentity(msg: Record<string, unknown>, nonce: string): Record<string, unknown> {
+function injectDeviceIdentity(msg: Record<string, unknown>, nonce: string, logTag = '[ws-proxy]'): Record<string, unknown> {
   const params = (msg.params || {}) as ConnectParams;
   const clientId = params.client?.id || 'nerve-ui';
   const clientMode = params.client?.mode || 'webchat';
@@ -347,7 +360,7 @@ function injectDeviceIdentity(msg: Record<string, unknown>, nonce: string): Reco
     nonce,
   });
 
-  console.log(`[ws-proxy] Injected device identity: ${device.id.substring(0, 12)}…`);
+  console.log(`${logTag} Injected device identity: ${device.id.substring(0, 12)}...`);
 
   return {
     ...msg,
