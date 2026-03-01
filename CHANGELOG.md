@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.5] — 2026-03-01
+
+### Added
+- **Task board** with full kanban workflow: drag-and-drop, agent execution, proposals, SSE live updates, board configuration, and audit log (PR #61)
+- **Gateway restart button** in the top bar for one-click gateway restarts (PR #49 by @jamesjmartin)
+- **File browser operations**: rename, move, trash, and restore files from the workspace panel (PR #44)
+- Deployment guides for three topology scenarios: localhost, LAN/tailnet, and public cloud (PR #60)
+- Updater now resolves the latest published GitHub release instead of defaulting to master HEAD (PR #45)
+
+### Fixed
+- Server build (`build:server`) now included in `npm run build`; `npm run prod` runs both builds (PR #47 by @jamesjmartin)
+- Memory collapse toggle: first click to expand no longer silently ignored due to key mismatch and nullish default (PR #62 by @jamesjmartin)
+- Kanban board columns scroll vertically when tasks overflow viewport (PR #63)
+- Switching TTS provider no longer sends the previous provider's model ID, which caused 400 errors
+
+### Contributors
+- **@jamesjmartin** -- build fix (#47), gateway restart button (#49), memory toggle fix (#62)
+
+---
+
 ## [1.4.3] — 2026-02-27
 
 ### Added
