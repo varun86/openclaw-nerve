@@ -76,6 +76,7 @@ export interface KanbanBoardConfig {
   quickViewLimit: number;
   proposalPolicy: 'confirm' | 'auto';
   defaultModel?: string;
+  defaultThinking?: string;
 }
 
 // ── Proposals ────────────────────────────────────────────────────────

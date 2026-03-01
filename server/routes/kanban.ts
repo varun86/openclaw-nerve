@@ -267,6 +267,7 @@ const configSchema = z.object({
   quickViewLimit: z.number().int().min(1).max(50).optional(),
   proposalPolicy: z.enum(['confirm', 'auto']).optional(),
   defaultModel: z.string().max(100).optional(),
+  defaultThinking: z.string().max(20).optional(),
 });
 
 // ── Proposal schemas ─────────────────────────────────────────────────
@@ -711,11 +712,13 @@ app.post('/api/kanban/tasks/:id/execute', rateLimitGeneral, async (c) => {
       mode: 'run',
       label: `kanban-run-${id}-${Date.now()}`,
     };
-    // Use task's model, or fall back to kanban config default, or Sonnet 4.5
+    // Use task's model, or board default. If neither is set, omit — OpenClaw
+    // will use whatever default model the operator configured in openclaw.json.
     const config = await store.getConfig();
-    const model = task.model || config.defaultModel || 'anthropic/claude-sonnet-4-5';
-    spawnArgs.model = model;
-    if (task.thinking) spawnArgs.thinking = task.thinking;
+    const model = task.model || config.defaultModel;
+    if (model) spawnArgs.model = model;
+    const thinking = task.thinking || config.defaultThinking;
+    if (thinking) spawnArgs.thinking = thinking;
 
     const runLabel = spawnArgs.label as string;
     invokeGatewayTool('sessions_spawn', spawnArgs)
