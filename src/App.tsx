@@ -240,6 +240,7 @@ export default function App({ onLogout }: AppProps) {
   // Global keyboard shortcuts
   useKeyboardShortcuts([
     { key: 'k', meta: true, handler: handleOpenPalette },
+    { key: 'b', meta: true, handler: handleToggleFileBrowser },  // Cmd+B → toggle file browser
     { key: 'f', meta: true, handler: toggleSearch, skipInEditor: true },  // Cmd+F → chat search (yields to CodeMirror search in editor)
     { key: 'c', ctrl: true, handler: handleCtrlC, preventDefault: false },  // Ctrl+C → abort (when generating), allow copy to still work
     { key: 'Escape', handler: handleEscape, skipInEditor: true },
