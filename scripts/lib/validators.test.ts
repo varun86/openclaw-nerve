@@ -37,6 +37,7 @@ describe('testGatewayConnection', () => {
           Authorization: 'Bearer real-token',
           'Content-Type': 'application/json',
         }),
+        body: JSON.stringify({ tool: 'sessions_list', args: { limit: 1 } }),
       }),
     );
   });

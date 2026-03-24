@@ -50,7 +50,7 @@ export async function testGatewayConnection(url: string, token?: string): Promis
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ tool: 'session_status', args: {}, sessionKey: 'main' }),
+      body: JSON.stringify({ tool: 'sessions_list', args: { limit: 1 } }),
       signal: AbortSignal.timeout(5000),
     });
 
