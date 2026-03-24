@@ -772,7 +772,13 @@ app.post('/api/kanban/tasks/:id/execute', rateLimitGeneral, async (c) => {
     invokeGatewayTool('sessions_spawn', spawnArgs)
       .then(async (spawnRaw) => {
         const spawn = parseGatewayResponse(spawnRaw);
-        const childSessionKey = typeof spawn.childSessionKey === 'string' ? spawn.childSessionKey : undefined;
+        const childSessionKey = typeof spawn.childSessionKey === 'string'
+          ? spawn.childSessionKey
+          : typeof spawn.sessionKey === 'string'
+            ? spawn.sessionKey
+            : typeof spawn.sessionId === 'string'
+              ? spawn.sessionId
+              : undefined;
         const runId = typeof spawn.runId === 'string' ? spawn.runId : undefined;
 
         const linkedTask = await store.attachRunIdentifiers(id, runSessionKey, {

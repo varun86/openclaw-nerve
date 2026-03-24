@@ -1423,6 +1423,58 @@ describe('POST /api/kanban/tasks/:id/complete — run key integrity', () => {
     expect(completed?.result).toContain('Done via runId');
   });
 
+  it('completes when sessions_spawn returns sessionId instead of childSessionKey', async () => {
+    const childSessionKey = 'agent:main:subagent:alias-session-id';
+    const invokeGatewayToolMock = vi.fn(async (tool: string) => {
+      if (tool === 'sessions_spawn') {
+        return {
+          details: {
+            sessionId: childSessionKey,
+          },
+        };
+      }
+      if (tool === 'subagents') {
+        return {
+          active: [],
+          recent: [{ label: 'totally-different-label', status: 'done', sessionId: childSessionKey }],
+        };
+      }
+      if (tool === 'sessions_history') {
+        return {
+          messages: [
+            {
+              role: 'assistant',
+              content: 'Done via sessionId alias',
+            },
+          ],
+        };
+      }
+      return {};
+    });
+
+    const app = await buildApp({ invokeGatewayToolMock });
+    const task = await createTask(app, { status: 'todo' });
+
+    const execRes = await app.request(`/api/kanban/tasks/${task.id}/execute`, json({}));
+    expect(execRes.status).toBe(200);
+
+    await new Promise((resolve) => setTimeout(resolve, 3_200));
+
+    expect(invokeGatewayToolMock).toHaveBeenCalledWith('sessions_history', {
+      sessionKey: childSessionKey,
+      limit: 3,
+    });
+
+    const tasksRes = await app.request('/api/kanban/tasks');
+    const tasks = await tasksRes.json() as { items: KanbanTask[] };
+    const completed = tasks.items.find((item) => item.id === task.id);
+    expect(completed?.status).toBe('review');
+    expect(completed?.run?.status).toBe('done');
+    expect(completed?.run?.childSessionKey).toBe(childSessionKey);
+    expect(completed?.run?.sessionId).toBe(childSessionKey);
+    expect(completed?.result).toContain('Done via sessionId alias');
+  });
+
   it('ignores late stale poller completion from run 1 after run 2 is active', async () => {
     vi.useFakeTimers();
 
