@@ -3,7 +3,7 @@ import type { Session } from '@/types';
 import { getSessionKey } from '@/types';
 import type { SpawnSessionOpts } from '@/contexts/SessionContext';
 import { SessionSkeletonGroup } from '@/components/skeletons';
-import { buildSessionTree, flattenTree, getSessionType } from './sessionTree';
+import { buildAgentSidebarTree, buildSessionTree, flattenTree, getSessionType } from './sessionTree';
 import { getSessionDisplayLabel, isTopLevelAgentSessionKey } from './sessionKeys';
 import { SessionNode } from './SessionNode';
 import type { GranularAgentState } from '@/types';
@@ -133,7 +133,7 @@ export function SessionList({ sessions, currentSession, busyState, agentStatus, 
   }, [sessions]);
 
   // Build tree and flatten for rendering
-  const tree = useMemo(() => buildSessionTree(sessions), [sessions]);
+  const tree = useMemo(() => buildAgentSidebarTree(sessions), [sessions]);
   const flatNodes = useMemo(() => flattenTree(tree, expandedState), [tree, expandedState]);
 
   const handleSetDeleteTarget = useCallback((key: string, label: string) => {
@@ -177,9 +177,9 @@ export function SessionList({ sessions, currentSession, busyState, agentStatus, 
         </div>
       </div>
       <div className={compact ? 'overflow-y-auto' : 'flex-1 overflow-y-auto'}>
-        {isLoading && !sessions.length ? (
+        {isLoading && flatNodes.length === 0 ? (
           <SessionSkeletonGroup count={4} />
-        ) : !sessions.length ? (
+        ) : flatNodes.length === 0 ? (
           <div className="text-muted-foreground px-3 py-2 text-[0.733rem]">No active sessions</div>
         ) : flatNodes.map((node) => {
           const sessionKey = node.key;
